@@ -105,6 +105,10 @@ there's no need to wait a few days for the fishermen to find potential frauds.
 
 I've successfully deployed attestations and funding pool contracts
 on Polygon Mumbai, the official testnet, which is an L2 of Goerli.
+Experimental Mumbai support for radicle-contracts is added on branch
+[test-polygon](https://github.com/radicle-dev/radicle-contracts/tree/test-polygon)
+and for upstream on branch
+[igor/test-polygon](https://github.com/radicle-dev/radicle-upstream/tree/igor/test-polygon).
 Polygon runs regular EVM-compiled smart contracts, so there was no need
 to alter their code or even modify the compilation pipeline, everything just works.
 The orgs contract is dependant on Gnosis, which is yet to be deployed to Polygon.
@@ -141,6 +145,7 @@ On Mumbai there are many deployments of DAI, but I couldn't find any
 that would have both a public faucet and Polygon bridge support.
 The latter is especially important to test the whole user experience
 starting from having funds on Ethereum and transferring them to Polygon.
+For example Goerli DAI from `https://app.compound.finance/` doesn't have a bridge.
 
 I've decided to use the official Mumbai test ERC-20 token.
 It has [an official faucet](https://faucet.matic.network) and supports the bridge.
@@ -195,7 +200,7 @@ The effects of these transactions are kept off-chain, so to query the state one 
 use alternative endpoints, but regular one like Infura may still be able to provide events.
 
 The rollups submitted to the Ethereum chain may be invalid or even fraudulent.
-The system relies on validators, who will spot these issues
+The system relies on fishermen, who will spot these issues
 and announce which transactions should be ignored along a proof of an error.
 This creates a rolling issue, where fresh transactions can't be trusted,
 because they may be invalid, but their error proofs still haven't been announced.
@@ -205,8 +210,91 @@ I think that usage of optimistic rollups in Radicle ecosystem could work,
 but will introduce complexity and may impact the user experience.
 
 ## Optimism
-- optimistic rollup - has state
-- no mainnet yet
+
+Optimism is an implementation of an optimistic rollup.
+It runs smart contracts on OVM, which is similar to EVM, but it lacks
+some opcodes, which are substituted with precomiled smart contracts.
+This is needed to make every L2 transaction runnable inside a special L1
+smart contract when a proof of fraud is published, which makes them immediately
+
+Optimism hasn't been officially deployed for Ethereum Mainnet, it's still in the testing phase.
+
+### Developer perspective
+
+I've successfully deployed attestations and funding pool contracts on Kovan Optimism.
+Deployment works exactly the same as on L1, even the scripts can be reused without modification.
+Experimental Optimism support for radicle-contracts is added on branch
+[test-optimism](https://github.com/radicle-dev/radicle-contracts/tree/test-optimism)
+and for upstream on branch
+[igor/test-optimism](https://github.com/radicle-dev/radicle-upstream/tree/igor/test-optimism).
+
+Optimism comes with a modified version of the Solidity compiler, which produces the OVM bytecode.
+The compiler API is unchanged and it's compatible with existing tooling like Hardhat and Truffle.
+All it takes to make the switch is addition of a dependency
+and modification of the configuration file.
+
+The tooling for running tests is more problematic than with L1 Ethereum.
+Because the contracts are compiled to a slightly different bytecode,
+regular test clients like Ganache can't be used.
+Optimism provides a docker-compose set of images, which serves that purpose.
+It's as easy to use as possible, simple `docker-compose build && docker-compose run` is enough.
+Unfortunately it's very large, it took around 2 hours
+to build and run for the first time on my machine.
+The build time and requirement of docker-compose is going to make it challenging to use it in a CI.
+
+When a local Optimism client is running in the background, many of the Hardhat tests just work.
+Unfortunately most of funding pool tests and many of radicle token tests don't, because they rely
+on test RPC commands like `evm_mine`, `evm_setNextBlockTimestamp` and `evm_snapshot`, which are
+[not present yet](https://github.com/ethereum-optimism/optimism/issues/1194) on the client.
+All registrar tests keep failing too due to a
+[known issue](https://community.optimism.io/docs/developers/integration.html#constructor-arguments-might-be-unsafe)
+with the compiler.
+
+Optimism has a single official public client and it just works providing all necessary features.
+If there's need for higher loads, Infura has recently introduced support for Optimism.
+Due to the way the optimistic rollups work, the clients provide state,
+which may be invalidated in the future by a fraud proof.
+This is acceptable for operations, which have only on-chain effects, like funding pools,
+but can be disastrous when an off-chain system is affected by the chain state, like attestations.
+The only solution would be to wait a few days before respecting the state,
+waiting for the fishermen to catch any frauds, but the UX of such system would be terrible.
+
+Optimism has great support for Kovan Dai, which I've used as the ERC-20 token in the funding pool.
+It provides a testnet bridge, which works with deployment of Dai used in the
+`https://app.compound.finance/` faucet and in Kovan Uniswap.
+
+### User perspective
+
+Optimism runs on gas paid in Ether, so there's no need to buy any special tokens.
+Unfortunately both Eth and Dai needs to be transferred over a bridge to use it.
+It should be possible to handle this step in the app, so less savvy users don't get confused.
+
+Support for Optimism in mobile wallets isn't great.
+The transactions need to be handled slightly differently and sometimes it causes problems.
+The main difference is that all gas estimations have two values encoded in them, one for transaction
+cost on L1 and one on L2, which makes the final value huge, in range of tens of million of gas.
+The other detail is that gas price should be always set to 0.015 GWei.
+This is problematic, because it requires wallets to implement special handling
+of Optimism transactions, which wouldn't make sense on L1.
+
+- WallEth works fine. It needs gas price to be manually set for each transaction to 0.015 GWei.
+- MetaMask for Android gets confused by both of these differences, it refuses to sign a transaction
+seemingly using more gas than the whole block and can't handle fractions in gas price.
+- Alpha wallet always uses WalletConnect with Ethereum Mainnet and can't switch to Optimism.
+- ImToken silently fails, the transactions just don't show up on the network.
+
+#### Usage steps
+
+First, I needed to add Optimism network to my browser extension MetaMask to perform
+any transactions from outside of upstream.
+I also needed to do the same with my mobile WallEth as I'm using it for upstream.
+
+Next, I pushed my Ether and Dai through [the bridge](https://gateway.optimism.io/).
+It takes around a minute to move tokens from L1 to L2.
+I used upstream to stream some tokens, which functions exactly the same as on Ethereum.
+
+Finally, using the token stream receiver account I collected the sent tokens.
+Using the bridge I transferred them from L2 to L1, they will appear on L1 in around a week.
 
 ## Arbitrum
 

@@ -298,12 +298,16 @@ Using the bridge I transferred them from L2 to L1, they will appear on L1 in aro
 
 ## Arbitrum
 
-Arbitrum is very similar to Optimism in principle.
-There are some technical differences between them
+Arbitrum is a direct competitor of Optimism.
+There are some technical differences between them, like Arbitrum running vanilla EVM
+instead of simplified OVM and a longer fraud proving process, but nothing substantial.
+It's a less popular solution with fewer projects
+and a lower chance of having our users already onboarded.
+If we decide to use an optimistic rollup, I think that Optimism should be the way to go.
 
-# ZK-SNARK rollups
+# ZK rollups
 
-The ZK-SNARK rollups are very similar to optimistic rollups, but they solve the uncertainty issue.
+The ZK rollups are very similar to optimistic rollups, but they solve the uncertainty issue.
 All transactions are submitted with a proof that they were applied on a valid latest state
 and that they were executed correctly.
 The rollup smart contract verifies these proofs and rejects invalid rollups.
@@ -312,33 +316,90 @@ after its the changes are included in an Ethereum block.
 This is convenient for the Radicle smart contracts, because the on-chain data can be considered
 a source of truth and because the end users can quickly withdraw their funds from L2.
 
+## StarNet
+
+StarkNet is a programmable ZK rollup L2 solution developed by StarkWare.
+It isn't released on Mainnet yet and WIP versions keep getting released on Ropsten.
+The company developed another ZK rollup system called StarkEx, which is already running on Mainnet.
+It provides some services like transfers and exchanges which are running on ZK rollups,
+but they have fixed functionality, you can't deploy custom logic on StarkEx.
+
+It's unclear when StarkNet will be released on Mainnet.
+Right now it can run custom smart contracts, but every ZK rollup posted on Ropsten
+can hold only changes coming from a single contract.
+Because of that there are no cross-contract calls yet,
+e.g. you can't make an ERC-20 transfer from within a funding pool.
+This situation is supposed to change in a near future and the whole StarkNet state changes
+will be kept in single rollups.
+There are many more missing pieces, like designing usage pricing scheme, opening source of
+all components including the proof generator and decentralization of the network.
+
+### Cairo
+
+Cairo is the only currently supported smart contracts language on StarkNet.
+Its VM (execution rules and memory model) is somewhat similar to that of a regular CPU,
+but it has some exotic limitations.
+
+The most important one is that the memory is a stack, which can only be appended and never modified.
+For example when function A calls function B and B returns, A is left with a stack containing
+first its own variables, then B's variables and then probably some more of its own.
+There's no heap and no global variables except constants.
+Despite this dynamic allocation of arrays is possible, because Cairo VM supports multiple stacks.
+A memory block can be allocated on an auxiliary stack, which is then glued to the main one
+when the smart contract is executed to preserve the single-stack memory model.
+I wouldn't be surprised if in the future that trick would be used to hide more limitations.
+Some built-in functions like hashing are used by writing and reading from special purpose stacks.
+
+Cairo is a mixture of assembly-like and syntax sugared commands,
+of which all translate directly to the lower-level ones.
+For example you can call `return (my_val)` or push `my_val` to the stack and call `ret`.
+Even stack pointer management can be done automatically or manually.
+If you want to use a built-in, you need to pass around a reference to its special purpose stack.
+There is some syntax sugar around it, but it only saves keystrokes,
+you still need to remember and understand what's happening.
+Working around memory model limitations is barely hidden at all.
+For example when you make a function call, you need to keep track of which variables will
+stop being accessible because the function may append an arbitrary amount of data to the stack.
+
+The tooling of Cairo is bare bones, but it does its job.
+Test need to be written in Python and there's no package management.
+Experimental work has been started to create an EVM to Cairo transpiler.
+Time will tell if it'll be a viable option, but I suspect that working around
+differences between EVM and StarkNet VM may produce some extremely bloated code.
+
+All these properties make Cairo a difficult and arduous language, especially for newcomers.
+It's not very expressive, it's full of implicit behaviors
+and it requires deep understanding of its VM to read or modify even simple code.
+
 ## zkSync
 
-zkSync is an L2 Ethereum rollup based on zk-SNARKs.
+zkSync is a programmable ZK rollup L2 solution developed by Matter Labs.
+Its 1.x version is released on Mainnet and it enables transfers and exchanges on ZK rollups,
+but these features are fixed, you can't run a custom smart contract there.
+A programmable version is being developed and test releases are available on Rinkeby.
+Programmable zkSync will be released on Mainnet only when 2.x version is finished,
+but it's unclear when will it happen.
+Currently 2.0 is said to be polished and almost ready for premiere,
+but because until then its source code will be kept closed, it's hard to verify this claim.
 
-Matter Labs (zkSync)
-- zk rollup
-- Zinc, in a few months Solidity
-- For now turing-incomplete
-- can be used with eip-712 signed messages
+### Zinc
 
+Zinc is a language created for zkSync smart contracts and as of 1.x it's the only supported one.
+With 2.0 an official EVM transpiler will be released, but its developers
+are expecting it to generate less efficient bytecode than Zinc.
 
-mint.zksync.dev
+Zinc is based on Rust, with simplified syntax and cut down features.
+Its biggest limitation is that it's not turing-complete
+because all logic paths must be statically determinable.
+There are conditional branches and loops, but they must have fixed number of iterations.
+It's impossible to allocate and use dynamic memory, because any meaningful
+operations performed on it wouldn't have number of steps known at compilation time.
+In zkSync 2.0 the VM will become turing-complete and this limitation will be lifted.
 
-account activation is required
-
-# Starkware
-- zk rollup
-- cairo lang
-- already working?
-
-
-
-
-
-
-
-
-                | SNARK/STARK   | fraud proofs
-data on-chain   | ZK rollup     | optimistic rollup
-data off-chain  | Validium      | Plasma
+Zinc is easy for newcomers, it takes less than a day to learn it thoroughly.
+Its syntax is trivial for developers familiar with Rust and expressive despite simplification.
+There are few hidden behaviors and the limitations are easy to learn.
+The tooling is decent, you can write unit tests in Zinc and there's innovative package management.
+Unlike on Ethereum where source codes and interfaces are usually fetched from NPM and actual
+addresses are written by hand, on zkSync the only source of truth is the network itself,
+which provides the list of currently deployed contracts, their interfaces and source codes.
